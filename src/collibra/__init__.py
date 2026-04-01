@@ -1,0 +1,1 @@
+"""Collibra publisher sub-package."""

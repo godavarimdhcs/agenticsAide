@@ -1,0 +1,16 @@
+# SFTP Excel ingestion config – PROD environment
+
+source_system: finance_reports
+sftp_host: "prod-sftp.internal.example.com"
+sftp_port: 22
+sftp_remote_dir: /outbound/finance
+
+landing_path: "abfss://landing@prodstorage.dfs.core.windows.net/sftp/prod/finance/"
+manifest_table: prod_lakehouse.bronze.metadata_sftp_manifest
+secret_scope: prod-sftp
+
+files:
+  - pattern: "*.xlsx"
+    sheet_name: Sheet1
+    header_row: 0
+    target_table: prod_lakehouse.bronze.finance_reports

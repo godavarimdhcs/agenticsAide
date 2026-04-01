@@ -1,0 +1,22 @@
+# SFTP Excel ingestion config – DEV environment
+# Secret scope: dev-sftp  (keys: username, password)
+
+source_system: finance_reports
+sftp_host: "dev-sftp.internal.example.com"
+sftp_port: 22
+sftp_remote_dir: /outbound/finance
+
+# ADLS Gen2 landing path (abfss URI)
+landing_path: "abfss://landing@devstorage.dfs.core.windows.net/sftp/dev/finance/"
+
+# File manifest table (Unity Catalog)
+manifest_table: dev_lakehouse.bronze.metadata_sftp_manifest
+
+# Databricks secret scope
+secret_scope: dev-sftp
+
+files:
+  - pattern: "*.xlsx"
+    sheet_name: Sheet1
+    header_row: 0
+    target_table: dev_lakehouse.bronze.finance_reports

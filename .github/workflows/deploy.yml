@@ -1,0 +1,89 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Deployment target"
+        required: true
+        default: dev
+        type: choice
+        options: [dev, qa, prod]
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Deploy to dev automatically on every push to main
+  # ---------------------------------------------------------------------------
+  deploy-dev:
+    name: Deploy to DEV
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      contents: read
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'dev')
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_DEV_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_DEV_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+      - name: Deploy bundle (dev)
+        run: databricks bundle deploy --target dev
+
+  # ---------------------------------------------------------------------------
+  # Deploy to QA (manual trigger only)
+  # ---------------------------------------------------------------------------
+  deploy-qa:
+    name: Deploy to QA
+    runs-on: ubuntu-latest
+    environment: qa
+    permissions:
+      contents: read
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'qa'
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_QA_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_QA_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+      - name: Deploy bundle (qa)
+        run: databricks bundle deploy --target qa
+
+  # ---------------------------------------------------------------------------
+  # Deploy to Prod (manual trigger, requires approval in GitHub Environments)
+  # ---------------------------------------------------------------------------
+  deploy-prod:
+    name: Deploy to PROD
+    runs-on: ubuntu-latest
+    environment: prod
+    permissions:
+      contents: read
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'prod'
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_PROD_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_PROD_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+      - name: Deploy bundle (prod)
+        run: databricks bundle deploy --target prod

@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "agenticsaide-lakehouse"
+version = "0.1.0"
+description = "Azure Databricks Lakehouse data platform scaffold"
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+    "pandas>=2.0.0",
+    "openpyxl>=3.1.0",
+    "paramiko>=3.4.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "flake8>=6.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*", "jobs*", "pipelines*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.flake8]
+max-line-length = 100
+extend-ignore = ["E203", "W503"]
+exclude = [".git", "__pycache__", ".venv", "dist", "build"]

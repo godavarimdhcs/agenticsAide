@@ -1,0 +1,33 @@
+# Postgres ingestion config – DEV environment
+# Secret scope: dev-postgres  (keys: username, password)
+
+source_system: crm
+jdbc_host: "dev-postgres.internal.example.com"
+jdbc_port: 5432
+jdbc_database: crm_db
+fetchsize: 10000
+
+# Watermark tracking table (Unity Catalog)
+watermark_table: dev_lakehouse.bronze.metadata_watermarks
+
+# Databricks secret scope for JDBC credentials
+secret_scope: dev-postgres
+
+tables:
+  - schema: public
+    table: customers
+    watermark_col: updated_at
+    target_table: dev_lakehouse.bronze.crm_customers
+    partition_column: customer_id
+    num_partitions: 8
+    lower_bound: 1
+    upper_bound: 99999999
+
+  - schema: public
+    table: orders
+    watermark_col: updated_at
+    target_table: dev_lakehouse.bronze.crm_orders
+    partition_column: order_id
+    num_partitions: 8
+    lower_bound: 1
+    upper_bound: 99999999
