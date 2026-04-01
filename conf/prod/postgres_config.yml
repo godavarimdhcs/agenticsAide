@@ -1,0 +1,29 @@
+# Postgres ingestion config – PROD environment
+
+source_system: crm
+jdbc_host: "prod-postgres.internal.example.com"
+jdbc_port: 5432
+jdbc_database: crm_db
+fetchsize: 10000
+
+watermark_table: prod_lakehouse.bronze.metadata_watermarks
+secret_scope: prod-postgres
+
+tables:
+  - schema: public
+    table: customers
+    watermark_col: updated_at
+    target_table: prod_lakehouse.bronze.crm_customers
+    partition_column: customer_id
+    num_partitions: 16
+    lower_bound: 1
+    upper_bound: 999999999
+
+  - schema: public
+    table: orders
+    watermark_col: updated_at
+    target_table: prod_lakehouse.bronze.crm_orders
+    partition_column: order_id
+    num_partitions: 16
+    lower_bound: 1
+    upper_bound: 999999999

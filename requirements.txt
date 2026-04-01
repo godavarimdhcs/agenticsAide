@@ -1,0 +1,11 @@
+# Runtime dependencies
+# Note: pyspark, dlt, and paramiko are provided by the Databricks runtime.
+# They are listed here for local development / CI purposes only.
+
+pyspark>=3.4.0
+delta-spark>=2.4.0
+pyyaml>=6.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+paramiko>=3.4.0
+requests>=2.31.0

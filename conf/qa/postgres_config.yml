@@ -1,0 +1,29 @@
+# Postgres ingestion config – QA environment
+
+source_system: crm
+jdbc_host: "qa-postgres.internal.example.com"
+jdbc_port: 5432
+jdbc_database: crm_db
+fetchsize: 10000
+
+watermark_table: qa_lakehouse.bronze.metadata_watermarks
+secret_scope: qa-postgres
+
+tables:
+  - schema: public
+    table: customers
+    watermark_col: updated_at
+    target_table: qa_lakehouse.bronze.crm_customers
+    partition_column: customer_id
+    num_partitions: 8
+    lower_bound: 1
+    upper_bound: 99999999
+
+  - schema: public
+    table: orders
+    watermark_col: updated_at
+    target_table: qa_lakehouse.bronze.crm_orders
+    partition_column: order_id
+    num_partitions: 8
+    lower_bound: 1
+    upper_bound: 99999999

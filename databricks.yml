@@ -1,0 +1,267 @@
+# =============================================================================
+# Databricks Asset Bundle (DABS) – agenticsAide Lakehouse Platform
+# =============================================================================
+# Deploy:
+#   databricks bundle deploy --target dev
+#   databricks bundle deploy --target qa
+#   databricks bundle deploy --target prod
+# Run:
+#   databricks bundle run --target dev postgres_ingestion_job
+# =============================================================================
+
+bundle:
+  name: agenticsaide-lakehouse
+
+# ---------------------------------------------------------------------------
+# Variables (overridden per target)
+# ---------------------------------------------------------------------------
+variables:
+  env:
+    default: dev
+  catalog:
+    default: dev_lakehouse
+  node_type:
+    default: Standard_DS3_v2
+  num_workers:
+    default: "2"
+  spark_version:
+    default: "14.3.x-scala2.12"
+
+# ---------------------------------------------------------------------------
+# Artifacts – Python wheel (optional; jobs can also use source files)
+# ---------------------------------------------------------------------------
+artifacts:
+  default:
+    type: whl
+    build: pip install build && python -m build
+    path: .
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+resources:
+
+  # ---- DLT Pipeline: Bronze → Silver ----------------------------------------
+  pipelines:
+    bronze_to_silver:
+      name: "[${var.env}] Bronze to Silver DLT"
+      target: ${var.catalog}.silver
+      catalog: ${var.catalog}
+      continuous: false
+      development: ${bundle.target == "dev"}
+      libraries:
+        - file:
+            path: pipelines/bronze_to_silver_dlt.py
+      configuration:
+        pipeline.source_catalog: ${var.catalog}
+        pipeline.source_system: crm
+      clusters:
+        - label: default
+          node_type_id: ${var.node_type}
+          num_workers: ${var.num_workers}
+          spark_conf:
+            spark.databricks.delta.preview.enabled: "true"
+
+  # ---- Jobs ------------------------------------------------------------------
+  jobs:
+
+    # -- 1. Postgres → Bronze --------------------------------------------------
+    postgres_ingestion_job:
+      name: "[${var.env}] Postgres Ingestion"
+      tags:
+        env: ${var.env}
+        layer: bronze
+      schedule:
+        quartz_cron_expression: "0 0 2 * * ?"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: ingest_postgres
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: ${var.num_workers}
+            spark_conf:
+              spark.sql.catalog.unity: com.databricks.sql.transaction.tahoe.catalog.DeltaCatalog
+          spark_python_task:
+            python_file: jobs/postgres_ingestion_job.py
+            parameters:
+              - "--env"
+              - ${var.env}
+
+    # -- 2. SFTP Excel → Bronze ------------------------------------------------
+    sftp_excel_ingestion_job:
+      name: "[${var.env}] SFTP Excel Ingestion"
+      tags:
+        env: ${var.env}
+        layer: bronze
+      schedule:
+        quartz_cron_expression: "0 30 2 * * ?"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: ingest_sftp_excel
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: ${var.num_workers}
+          spark_python_task:
+            python_file: jobs/sftp_excel_ingestion_job.py
+            parameters:
+              - "--env"
+              - ${var.env}
+
+    # -- 3. Bronze → Silver (DLT trigger) --------------------------------------
+    bronze_to_silver_job:
+      name: "[${var.env}] Bronze to Silver (DLT)"
+      tags:
+        env: ${var.env}
+        layer: silver
+      tasks:
+        - task_key: run_dlt_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.bronze_to_silver.id}
+
+    # -- 4. Silver → Gold ------------------------------------------------------
+    silver_to_gold_job:
+      name: "[${var.env}] Silver to Gold"
+      tags:
+        env: ${var.env}
+        layer: gold
+      tasks:
+        - task_key: run_gold_transforms
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: ${var.num_workers}
+          spark_python_task:
+            python_file: jobs/silver_to_gold_job.py
+            parameters:
+              - "--env"
+              - ${var.env}
+              - "--catalog"
+              - ${var.catalog}
+
+    # -- 5. Collibra publish ---------------------------------------------------
+    collibra_publish_job:
+      name: "[${var.env}] Collibra Publish"
+      tags:
+        env: ${var.env}
+      tasks:
+        - task_key: publish_collibra
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: "1"
+          spark_python_task:
+            python_file: jobs/collibra_publish_job.py
+            parameters:
+              - "--env"
+              - ${var.env}
+              - "--catalog"
+              - ${var.catalog}
+
+    # -- 6. Full orchestration (all layers in sequence) -----------------------
+    full_pipeline_job:
+      name: "[${var.env}] Full Lakehouse Pipeline"
+      tags:
+        env: ${var.env}
+      schedule:
+        quartz_cron_expression: "0 0 4 * * ?"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: step_1_postgres
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: ${var.num_workers}
+          spark_python_task:
+            python_file: jobs/postgres_ingestion_job.py
+            parameters:
+              - "--env"
+              - ${var.env}
+
+        - task_key: step_2_sftp
+          depends_on:
+            - task_key: step_1_postgres
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: ${var.num_workers}
+          spark_python_task:
+            python_file: jobs/sftp_excel_ingestion_job.py
+            parameters:
+              - "--env"
+              - ${var.env}
+
+        - task_key: step_3_dlt
+          depends_on:
+            - task_key: step_2_sftp
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.bronze_to_silver.id}
+
+        - task_key: step_4_gold
+          depends_on:
+            - task_key: step_3_dlt
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: ${var.num_workers}
+          spark_python_task:
+            python_file: jobs/silver_to_gold_job.py
+            parameters:
+              - "--env"
+              - ${var.env}
+              - "--catalog"
+              - ${var.catalog}
+
+        - task_key: step_5_collibra
+          depends_on:
+            - task_key: step_4_gold
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: "1"
+          spark_python_task:
+            python_file: jobs/collibra_publish_job.py
+            parameters:
+              - "--env"
+              - ${var.env}
+              - "--catalog"
+              - ${var.catalog}
+
+# ---------------------------------------------------------------------------
+# Targets (environments)
+# ---------------------------------------------------------------------------
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://adb-dev.azuredatabricks.net
+    variables:
+      env: dev
+      catalog: dev_lakehouse
+      node_type: Standard_DS3_v2
+      num_workers: "2"
+
+  qa:
+    mode: staging
+    workspace:
+      host: https://adb-qa.azuredatabricks.net
+    variables:
+      env: qa
+      catalog: qa_lakehouse
+      node_type: Standard_DS3_v2
+      num_workers: "4"
+
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-prod.azuredatabricks.net
+    variables:
+      env: prod
+      catalog: prod_lakehouse
+      node_type: Standard_DS4_v2
+      num_workers: "8"

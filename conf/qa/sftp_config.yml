@@ -1,0 +1,16 @@
+# SFTP Excel ingestion config – QA environment
+
+source_system: finance_reports
+sftp_host: "qa-sftp.internal.example.com"
+sftp_port: 22
+sftp_remote_dir: /outbound/finance
+
+landing_path: "abfss://landing@qastorage.dfs.core.windows.net/sftp/qa/finance/"
+manifest_table: qa_lakehouse.bronze.metadata_sftp_manifest
+secret_scope: qa-sftp
+
+files:
+  - pattern: "*.xlsx"
+    sheet_name: Sheet1
+    header_row: 0
+    target_table: qa_lakehouse.bronze.finance_reports
